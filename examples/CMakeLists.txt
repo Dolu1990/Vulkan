@@ -84,6 +84,7 @@ function(buildExamples)
 endfunction(buildExamples)
 
 set(EXAMPLES
+	playground
 	bloom
 	bufferdeviceaddress
 	computecloth

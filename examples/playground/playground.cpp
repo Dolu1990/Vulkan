@@ -14,12 +14,13 @@
 struct VoxelGrid{
 	glm::ivec3 dim;
 	glm::u8 *data;
-	VoxelGrid(glm::ivec3 dim){
+	void init(glm::ivec3 dim){
 		this->dim = dim;
-		data = new glm::u8[dim[0]*dim[1]*dim[2]];
+		//if(data) delete [] data;
+		//data = new glm::u8[dim[0]*dim[1]*dim[2]];
 	}
 	~VoxelGrid(){
-		delete [] data;
+		//delete [] data;
 	}
 };
 
@@ -29,10 +30,14 @@ public:
 	struct DemoModel {
 		vkglTF::Model* glTF;
 		VkPipeline *pipeline;
-		VoxelGrid * vox;
+		VoxelGrid vox;
 	};
 	std::vector<DemoModel> demoModels;
 	vks::TextureCubeMap skybox;
+
+
+	VkBuffer ssboBuffer;
+	VkDeviceMemory ssboMemory;
 
 	struct UniformData {
 		glm::mat4 projection;
@@ -54,6 +59,7 @@ public:
 	VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };
 
 	glm::vec4 lightPos = glm::vec4(1.0f, 4.0f, 0.0f, 0.0f);
+	//glm::vec4 lightPos = glm::vec4(-4.0f, -4.0f, -4.0f, 0.0f);
 
 	VulkanExample() : VulkanExampleBase()
 	{
@@ -61,7 +67,7 @@ public:
 		camera.type = Camera::CameraType::lookat;
 		//camera.flipY = true;
 		camera.setPosition(glm::vec3(0.0f, 0.0f, -3.75f));
-		camera.setRotation(glm::vec3(15.0f, 0.0f, 0.0f));
+		camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
 		camera.setRotationSpeed(0.5f);
 		camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 256.0f);
 	}
@@ -74,6 +80,8 @@ public:
 			vkDestroyPipeline(device, pipelines.skybox, nullptr);
 			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 			vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+			vkDestroyBuffer(device, ssboBuffer, nullptr);
+			vkFreeMemory(device, ssboMemory, nullptr);
 			for (auto demoModel : demoModels) {
 				delete demoModel.glTF;
 			}
@@ -81,6 +89,8 @@ public:
 			skybox.destroy();
 		}
 	}
+
+	
 
 	void loadAssets()
 	{
@@ -95,6 +105,10 @@ public:
 			model.pipeline = modelPipelines[i];
 			model.glTF = new vkglTF::Model();
 			model.glTF->loadFromFile(getAssetPath() + "models/" + modelFiles[i], vulkanDevice, queue, glTFLoadingFlags);
+
+			model.vox.init(glm::ivec3(10000, 0, 0));
+			for(int i = 0;i++;i < model.vox.dim[0]) model.vox.data[i] = 0x40;
+
 			demoModels.push_back(model);
 		}
 		// Textures
@@ -106,7 +120,8 @@ public:
 		// Pool
 		std::vector<VkDescriptorPoolSize> poolSizes = {
 			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2),
-			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1)
+			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1),
+			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1)
 		};
 		VkDescriptorPoolCreateInfo descriptorPoolInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 2);
 		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
@@ -116,7 +131,9 @@ public:
 			// Binding 0 : Vertex shader uniform buffer
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
 			// Binding 1 : Fragment shader color map image sampler
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1)
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+			// Binding 2 : Fragment voxels
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 2)
 		};
 		VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
 		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr, &descriptorSetLayout));
@@ -125,11 +142,15 @@ public:
 		VkDescriptorSetAllocateInfo allocInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &descriptorSetLayout, 1);
 		VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
 
+		VkDescriptorBufferInfo miaou{ ssboBuffer, 0, VK_WHOLE_SIZE };
+
 		std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
 			// Binding 0 : Vertex shader uniform buffer
 			vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, &uniformBuffer.descriptor),
 			// Binding 1 : Fragment shader image sampler
-			vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, &skybox.descriptor)
+			vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, &skybox.descriptor),
+			// Binding 2 : Fragment voxels
+			vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &miaou),
 		};
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
 	}
@@ -231,7 +252,7 @@ public:
 
 			vkCmdBindDescriptorSets(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
-			for (auto model : demoModels) {
+			for (auto &model : demoModels) {
 				vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, *model.pipeline);
 				model.glTF->draw(drawCmdBuffers[i]);
 			}
@@ -253,11 +274,74 @@ public:
 		VulkanExampleBase::submitFrame();
 	}
 
+	void prepareVoxelBuffer(){
+		// Define buffer creation info
+		VkBufferCreateInfo bufferCreateInfo = {};
+		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		#define DIM 100
+		bufferCreateInfo.size = DIM*DIM*DIM*4;  // Size of the buffer in bytes
+		bufferCreateInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; // Usage as a storage buffer
+		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // No sharing between queues
+
+		// Create the buffer
+		vkCreateBuffer(device, &bufferCreateInfo, nullptr, &ssboBuffer);
+
+		// Allocate memory for the buffer
+		VkMemoryRequirements memRequirements;
+		vkGetBufferMemoryRequirements(device, ssboBuffer, &memRequirements);
+
+		// Define memory allocation info
+		VkMemoryAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+		// Allocate memory
+		vkAllocateMemory(device, &allocInfo, nullptr, &ssboMemory);
+
+		// Bind the memory to the buffer
+		vkBindBufferMemory(device, ssboBuffer, ssboMemory, 0);
+
+
+		//std::vector<uint32_t> ssboData = {255, 128, 0, 4, 5, 6, 7, 8};
+		std::vector<uint32_t> ssboData(DIM*DIM*DIM);
+		for(int z = 0;z < DIM;z++){
+			for(int y = 0;y < DIM;y++){
+				for(int x = 0;x < DIM;x++){
+					ssboData[x+DIM*y+DIM*DIM*z] = (x-DIM/2)*(x-DIM/2)+(y-DIM/2)*(y-DIM/2) > (DIM/4)*(DIM/4) ? 0 : 1;
+				}
+			}
+		}
+
+		void* mappedMemory;
+
+		// Step 1: Map the buffer memory
+		vkMapMemory(device, ssboMemory, 0, ssboData.size() * sizeof(uint32_t), 0, &mappedMemory);
+
+		// Step 2: Copy data to the mapped memory
+		memcpy(mappedMemory, ssboData.data(), ssboData.size() * sizeof(uint32_t));
+
+		// Step 3: Flush the memory if not coherent
+		VkMappedMemoryRange memoryRange = {};
+		memoryRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+		memoryRange.memory = ssboMemory;
+		memoryRange.offset = 0;
+		memoryRange.size = VK_WHOLE_SIZE;  // Flush the entire memory
+
+		//if (!(memoryProperties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+		//	vkFlushMappedMemoryRanges(device, 1, &memoryRange);
+		//}
+
+		// Step 4: Unmap the memory
+		vkUnmapMemory(device, ssboMemory);
+	}
+
 	void prepare()
 	{
 		VulkanExampleBase::prepare();
 		loadAssets();
 		prepareUniformBuffers();
+		prepareVoxelBuffer();
 		setupDescriptors();
 		preparePipelines();
 		buildCommandBuffers();

@@ -8,6 +8,24 @@
 * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
 */
 
+
+/*
+# Physics
+Accurate voxel needed on : 
+- volume collision test
+- connectivity test
+
+damaged pixel walk :
+- Raycast : mesh in/out -> damanged pixel walk
+
+
+volume collision :
+- Generate contact points using regular convex volume
+- Refine contact point in damaged voxel
+  - ignore refinment for hich velocities
+  - x8 voxel scale
+*/
+
 #include "vulkanexamplebase.h"
 #include "VulkanglTFModel.h"
 
@@ -45,6 +63,7 @@ public:
 		glm::mat4 normal;
 		glm::mat4 view;
 		glm::vec4 lightPos;
+		glm::mat4 modelInv;
 	} uniformData;
 	vks::Buffer uniformBuffer;
 
@@ -98,6 +117,10 @@ public:
 		//std::vector<std::string> modelFiles = { "cube.gltf", "vulkanscenelogos.gltf", "vulkanscenebackground.gltf", "vulkanscenemodels.gltf" };
 		//std::vector<VkPipeline*> modelPipelines = { &pipelines.skybox, &pipelines.logos, &pipelines.models, &pipelines.models };
 		std::vector<std::string> modelFiles = { "vulkanscenemodels.gltf" };
+		//std::vector<std::string> modelFiles = { "cube.gltf" };
+		//std::vector<std::string> modelFiles = { "cube_blender.gltf" };
+
+		
 		std::vector<VkPipeline*> modelPipelines = { &pipelines.models };
 		for (auto i = 0; i < modelFiles.size(); i++) {
 			DemoModel model;
@@ -129,7 +152,7 @@ public:
 		// Layout
 		std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
 			// Binding 0 : Vertex shader uniform buffer
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0),
 			// Binding 1 : Fragment shader color map image sampler
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
 			// Binding 2 : Fragment voxels
@@ -214,8 +237,10 @@ public:
 		uniformData.projection = camera.matrices.perspective;
 		uniformData.view = camera.matrices.view;
 		uniformData.model = glm::mat4(1.0f);
+		//uniformData.model = glm::scale(uniformData.model, glm::vec3(0.25f, 0.25f, 0.25f));
 		uniformData.normal = glm::inverseTranspose(uniformData.view * uniformData.model);
 		uniformData.lightPos = lightPos;
+		uniformData.modelInv = inverse(uniformData.model) * inverse(uniformData.view);
 		memcpy(uniformBuffer.mapped, &uniformData, sizeof(uniformData));
 	}
 
@@ -312,6 +337,142 @@ public:
 				}
 			}
 		}
+
+		#define VOID 0x00000000
+		#define LEAF 0xC0000000
+		#define BRAN 0x80000000
+		int n = 0;
+		for(int i = 0;i < 8;i++) ssboData[n+i] = VOID + n;
+		ssboData[n+0] = BRAN + n + 8;
+		n+=8;
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+
+
+		n = 0;
+		for(int i = 0;i < 8;i++) ssboData[n+i] = BRAN + n + 8;
+		//n+=8;
+		for(int i = 0;i < 8;i++) ssboData[n+i] = VOID;
+		n+=8;
+	
+
+		ssboData[0] = BRAN + n;
+		std::vector<int> miaou = {7,4,5,6};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/3 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+			n+=8;
+
+		ssboData[1] = BRAN + n;
+		miaou = {7,7,7,7};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/3 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+		n+=8;
+
+		ssboData[2] = BRAN + n;
+		miaou = {7,0,7,0};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/5 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+		n+=8;
+
+		ssboData[3] = BRAN + n;
+		miaou = {0,7,0,7};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/3 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+		n+=8;
+
+
+
+
+
+
+
+
+
+
+
+
+
+		n = 0;
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+		n+=8;
+	
+
+		ssboData[0] = BRAN + n;
+		miaou = {7,4,5,6};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/3 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+			n+=8;
+
+		ssboData[1] = BRAN + n;
+		miaou = {7,7,7,7};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/3 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+		n+=8;
+
+		ssboData[2] = BRAN + n;
+		miaou = {7,0,7,0};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/5 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+		n+=8;
+
+		ssboData[3] = BRAN + n;
+		miaou = {0,7,0,7,6,5,4,2,1,0};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = rand() < RAND_MAX/3 ? LEAF : VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+		n+=8;
+
+
+
+
+
+/*
+		miaou = {2,7,4};
+		for(int p : miaou){
+			if(n != 0) for(int i = 0;i < 8;i++) ssboData[n+i] = VOID;
+			ssboData[n+p] = BRAN + n + 8;
+			n+=8;
+		}
+		for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;*/
+
+		//for(int i = 0;i < 8;i++) ssboData[n+i] = BRAN + n + 8;
+
+		//ssboData[n+0] = VOID;
+		//for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
+
+
+		//for(int i = 0;i < 8;i++) ssboData[n+i] = VOID;
+		//for(int i = 0;i < 8;i++) ssboData[n+i] = LEAF;
 
 		void* mappedMemory;
 

@@ -14,6 +14,7 @@ layout (binding = 0) uniform UBO
     mat4 normal;      // Normal matrix (typically the inverse transpose of the model matrix)
     mat4 view;        // View matrix to transform world space to camera (view) space
     vec3 lightpos;    // Position of the light source in world space
+    mat4 modelInv;     
 } ubo;
 
 // Outputs passed to the fragment shader
@@ -61,6 +62,6 @@ void main()
     // - This will be used for lighting calculations in the fragment shader
     outLightVec = normalize(lightPos.xyz - outEyePos);
 
-	float myfloat = 3.1415f;
+	//float myfloat = 3.1415f;
     //debugPrintfEXT("My float is %f", myfloat);
 }

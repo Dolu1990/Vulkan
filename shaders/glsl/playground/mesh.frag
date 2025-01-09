@@ -5,6 +5,8 @@ layout (binding = 2) buffer  Voxels {
     uint voxels[];
 };
 
+//layout (binding = 1) uniform sampler2D depth;
+
 layout (binding = 0) uniform UBO 
 {
     mat4 projection;  // Projection matrix for perspective/orthographic projection
@@ -248,185 +250,9 @@ bool Octree_RayMarchLeaf2(vec3 o, vec3 d, out vec3 o_pos, out vec3 o_color, out 
 	//o_color = unpackUnorm4x8(cur).xyz;
 	o_iter = iter;
 
+	o_pos -= 1.5;
 	return scale < STACK_SIZE && t_min <= t_max;
 }
-
-/*
-// Function to perform ray marching through an octree.
-// Inputs:
-// - o: Origin of the ray in world coordinates.
-// - d: Direction of the ray.
-// Outputs:
-// - o_pos: Intersection position in world coordinates.
-// - o_color: Color data at the intersection.
-// - o_normal: Surface normal at the intersection.
-// - o_iter: Number of iterations the algorithm performed.
-// Returns: true if the ray intersects a leaf node, false otherwise.
-bool Octree_RayMarchLeaf2(vec3 o, vec3 d, out vec3 o_pos, out vec3 o_color, out vec3 o_normal, out uint o_iter) {
-    uint iter = 0; // Iteration counter for debugging or analysis.
-
-    // Ensure no division by zero in ray direction components.
-    d.x = abs(d.x) > EPS ? d.x : (d.x >= 0 ? EPS : -EPS);
-    d.y = abs(d.y) > EPS ? d.y : (d.y >= 0 ? EPS : -EPS);
-    d.z = abs(d.z) > EPS ? d.z : (d.z >= 0 ? EPS : -EPS);
-
-    // Precompute ray traversal coefficients for optimized calculations.
-    vec3 t_coef = 1.0f / -abs(d); // Coefficients for t(x), t(y), t(z).
-    vec3 t_bias = t_coef * o;     // Bias to offset the coefficients.
-
-    // Determine octree mirroring and adjust t_bias for positive ray directions.
-    uint oct_mask = 0u; // Keeps track of which axes are flipped.
-    if (d.x > 0.0f)
-        oct_mask ^= 1u, t_bias.x = 3.0f * t_coef.x - t_bias.x;
-    if (d.y > 0.0f)
-        oct_mask ^= 2u, t_bias.y = 3.0f * t_coef.y - t_bias.y;
-    if (d.z > 0.0f)
-        oct_mask ^= 4u, t_bias.z = 3.0f * t_coef.z - t_bias.z;
-
-    // Initialize the active span of t-values (intersection ranges).
-    float t_min = max(max(2.0f * t_coef.x - t_bias.x, 2.0f * t_coef.y - t_bias.y), 2.0f * t_coef.z - t_bias.z);
-    float t_max = min(min(t_coef.x - t_bias.x, t_coef.y - t_bias.y), t_coef.z - t_bias.z);
-    t_min = max(t_min, 0.0f); // Ensure t_min starts at or after the ray origin.
-    float h = t_max; // Used to track the closest intersection.
-
-    // Initialize traversal state variables.
-    uint parent = 0u;   // Parent node in the octree.
-    uint cur = 0u;      // Current octree node.
-    vec3 pos = vec3(1.0f); // Position in the octree.
-    uint idx = 0u;      // Child index within the current node.
-
-    // Determine the initial position within the octree.
-    if (1.5f * t_coef.x - t_bias.x > t_min)
-        idx ^= 1u, pos.x = 1.5f;
-    if (1.5f * t_coef.y - t_bias.y > t_min)
-        idx ^= 2u, pos.y = 1.5f;
-    if (1.5f * t_coef.z - t_bias.z > t_min)
-        idx ^= 4u, pos.z = 1.5f;
-
-    // Set the initial scale of the octree.
-    uint scale = STACK_SIZE - 1;
-    float scale_exp2 = 0.5f; // 2^(-scale), represents the size of the current octree cube.
-
-	uint stack[STACK_SIZE];
-    // Main ray marching loop.
-    while (scale < STACK_SIZE) {
-        ++iter; // Increment iteration counter.
-
-        // Load the current octree node, if not already loaded.
-        if (cur == 0u)
-            cur = voxels[parent + (idx ^ oct_mask)];
-
-        // Compute the maximum t-value for the current cube's corner.
-        vec3 t_corner = pos * t_coef - t_bias;
-        float tc_max = min(min(t_corner.x, t_corner.y), t_corner.z);
-
-        // Dive into the tree until a leaf is hit
-        if ((cur & 0x80000000u) != 0 && t_min <= t_max) {
-            // Process the leaf node.
-
-            float half_scale_exp2 = scale_exp2 * 0.5f;
-            vec3 t_center = half_scale_exp2 * t_coef + t_corner;
-
-            if ((cur & 0x40000000u) != 0) // If leaf node, exit loop.
-                break;
-
-            // Push the current state and descend to the next level of the octree.
-            if (tc_max < h)
-                stack[scale] = parent; // Save current state on stack.
-            h = tc_max;
-
-            parent = cur & 0x3fffffffu; // Update parent to current node.
-
-            idx = 0u; // Reset child index for the next level.
-            --scale; // Move to the next finer level.
-            scale_exp2 = half_scale_exp2; // Update scale factor.
-
-            // Update position based on the ray direction and t_center values.
-            if (t_center.x > t_min)
-                idx ^= 1u, pos.x += scale_exp2;
-            if (t_center.y > t_min)
-                idx ^= 2u, pos.y += scale_exp2;
-            if (t_center.z > t_min)
-                idx ^= 4u, pos.z += scale_exp2;
-
-            cur = 0; // Reset current node.
-            continue; // Restart loop for the new level.
-        }
-
-        // If no intersection, advance the ray to the next cube.
-        uint step_mask = 0u;
-        if (t_corner.x <= tc_max)
-            step_mask ^= 1u, pos.x -= scale_exp2;
-        if (t_corner.y <= tc_max)
-            step_mask ^= 2u, pos.y -= scale_exp2;
-        if (t_corner.z <= tc_max)
-            step_mask ^= 4u, pos.z -= scale_exp2;
-
-        // Update t_min and flip child index bits based on the step direction.
-        t_min = tc_max;
-        idx ^= step_mask;
-
-        // Check for ray exiting the current parent cube.
-        if ((idx & step_mask) != 0) {
-            // Restore previous state (pop operation).
-            uint differing_bits = 0;
-            if ((step_mask & 1u) != 0)
-                differing_bits |= floatBitsToUint(pos.x) ^ floatBitsToUint(pos.x + scale_exp2);
-            if ((step_mask & 2u) != 0)
-                differing_bits |= floatBitsToUint(pos.y) ^ floatBitsToUint(pos.y + scale_exp2);
-            if ((step_mask & 4u) != 0)
-                differing_bits |= floatBitsToUint(pos.z) ^ floatBitsToUint(pos.z + scale_exp2);
-            scale = findMSB(differing_bits); // Find the scale level to pop to.
-            if (scale >= STACK_SIZE)
-                break;
-            scale_exp2 = uintBitsToFloat((scale - STACK_SIZE + 127u) << 23u);
-
-            // Restore parent node from the stack and update position.
-            parent = stack[scale];
-            pos = floor(pos * scale_exp2) * scale_exp2;
-            idx = ((uintBitsToFloat(pos.x) & 1u) | ((uintBitsToFloat(pos.y) & 1u) << 1u) | ((uintBitsToFloat(pos.z) & 1u) << 2u));
-
-            h = 0.0f;
-            cur = 0;
-        }
-    }
-
-    // Calculate final intersection position and normal.
-    vec3 t_corner = t_coef * (pos + scale_exp2) - t_bias;
-
-    vec3 norm = (t_corner.x > t_corner.y && t_corner.x > t_corner.z)
-                    ? vec3(-1, 0, 0)
-                    : (t_corner.y > t_corner.z ? vec3(0, -1, 0) : vec3(0, 0, -1));
-    if ((oct_mask & 1u) == 0u)
-        norm.x = -norm.x;
-    if ((oct_mask & 2u) == 0u)
-        norm.y = -norm.y;
-    if ((oct_mask & 4u) == 0u)
-        norm.z = -norm.z;
-
-    // Adjust position to undo mirroring caused by ray direction.
-    if ((oct_mask & 1u) != 0u)
-        pos.x = 3.0f - scale_exp2 - pos.x;
-    if ((oct_mask & 2u) != 0u)
-        pos.y = 3.0f - scale_exp2 - pos.y;
-    if ((oct_mask & 4u) != 0u)
-        pos.z = 3.0f - scale_exp2 - pos.z;
-
-    // Output intersection results.
-    o_pos = clamp(o + t_min * d, pos, pos + scale_exp2);
-    if (norm.x != 0)
-        o_pos.x = norm.x > 0 ? pos.x + scale_exp2 + EPS * 2 : pos.x - EPS;
-    if (norm.y != 0)
-        o_pos.y = norm.y > 0 ? pos.y + scale_exp2 + EPS * 2 : pos.y - EPS;
-    if (norm.z != 0)
-        o_pos.z = norm.z > 0 ? pos.z + scale_exp2 + EPS * 2 : pos.z - EPS;
-    o_normal = norm;
-    o_color = unpackUnorm4x8(cur).xyz; // Extract color from the octree node.
-    o_iter = iter; // Record the number of iterations.
-
-    // Return whether a valid intersection was found.
-    return scale < STACK_SIZE && t_min <= t_max;
-}*/
 
 #define DIM 100
 #define HALF DIM/2
@@ -473,12 +299,47 @@ void main()
 	vec3 ray = fragModelPos - (ubo.modelInv * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	//outFragColor.xyz = vec3(0.0);
 	bool direct;
-	bool hit = Octree_RayMarchLeaf2(fragModelPos*0.5, normalize(ray.xyz), pos, color, normal, iter, direct);
+	bool hit = Octree_RayMarchLeaf2(fragModelPos, normalize(ray.xyz), pos, color, normal, iter, direct);
+	//fragModelPos*0.5
 	//outFragColor.xyz += color;
 	//if(hit) outFragColor.x += 0.5;
+	
 	if(!hit) discard;
 	if(hit && !direct)  outFragColor.xyz = normal + 0.3;
 
+	vec4 hitPos = ubo.view * ubo.model * vec4(pos, 1.0);
+	vec4 miaou = gl_FragCoord;
+
+    // Custom Z in view space (your custom computation)
+    float zViewCustom = inEyePos.z;
+    // Compute Z in clip space
+    float zClip = ubo.projection[2][2] * zViewCustom + ubo.projection[2][3];
+    // Compute w_clip (assuming projectionMatrix[3][2] scales zViewCustom to w_clip)
+    float wClip = ubo.projection[3][2] * zViewCustom + ubo.projection[3][3];
+    // Compute Z in NDC
+    float zNDC = zClip / wClip;
+    // Map to [0, 1] depth range
+    float zDepth = 0.5 * zNDC + 0.5;
+
+
+    vec4 clipPos = ubo.projection * hitPos;
+
+    // Perspective divide to get NDC
+    //float ndcDepth = clipPos.z / clipPos.w;
+
+    // Normalize to [0, 1]
+    //float normalizedDepth = 0.5 * ndcDepth + 0.5;
+
+	vec4 fragCoord = gl_FragCoord;
+   // if (gl_FragCoord.z > clipPos.z) {
+       // discard; // Fragment is behind another object, discard it
+    //}
+
+    // Write to depth buffer
+    gl_FragDepth = clipPos.z;
+
+	int x = 0;
+	//gl_FragDepth = 0.5;
 	//outFragColor.xyz = abs(inEyePos);
 
 	// outFragColor.xyz *= voxels[idx] != 0 ? 1.0 : 0.3;

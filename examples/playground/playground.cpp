@@ -29,6 +29,121 @@ volume collision :
 #include "vulkanexamplebase.h"
 #include "VulkanglTFModel.h"
 
+#define VOID 0x00000000
+#define LEAF 0xC0000000
+#define BRAN 0x80000000
+
+namespace Octree{
+	struct Layer{
+		Layer* cells[8];
+	};
+	const auto ZERO = (Layer*)0;
+	const auto ONE = (Layer*)1;
+	inline bool isLeaf(void* cell) {
+		return cell <= ONE;
+	}
+
+/*
+	void set(Layer *root, int scale, glm::ivec3 pos){
+		auto ptr = (void*)root;
+		while(scale > 0){
+			int idx = (((pos.x >> scale) & 1) << 0) | (((pos.y >> scale) & 1) << 1) | (((pos.z >> scale) & 1) << 2);
+			auto cell = static_cast<Layer*>(ptr)->cells[idx];
+			if(isLeaf(cell)){
+				cell = new Layer();
+				static_cast<Layer*>(ptr)->cells[idx] = cell;
+			}
+			scale--;
+		}
+
+		int idx = (((pos.x >> 0) & 1) << 0) | (((pos.y >> 0) & 1) << 1) | (((pos.z >> 0) & 1) << 2);
+		static_cast<Layer*>(ptr)->cells[idx] = ONE;
+	}
+
+
+	void set(Layer **root, int scale, glm::ivec3 pos){
+		auto ptr = (void**)root;
+		while(scale > 0){
+			auto cell = *ptr;
+			if(isLeaf(cell)){
+				cell = new Layer();
+				*ptr = cell;
+			}
+			int idx = (((pos.x >> scale) & 1) << 0) | (((pos.y >> scale) & 1) << 1) | (((pos.z >> scale) & 1) << 2);
+			ptr = (&((static_cast<Layer*>(cell))->cells[idx]));
+
+			scale--;
+		}
+
+		*ptr = ONE;
+	}*/
+	void set(Layer **root, int scale, glm::ivec3 pos){
+		auto ptr = root;
+		while(scale >= 0){
+			auto cell = *ptr;
+			if(isLeaf(cell)){
+				cell = new Layer();
+				*ptr = cell;
+			}
+			int idx = (((pos.x >> scale) & 1) << 0) | (((pos.y >> scale) & 1) << 1) | (((pos.z >> scale) & 1) << 2);
+			ptr = (&(((cell))->cells[idx]));
+
+			scale--;
+		}
+
+		*ptr = ONE;
+	}
+
+	
+	void symplify(Layer **cell){
+		auto value = *cell;
+		if(isLeaf(value)) return;
+
+		bool isOne = true, isZero = true;
+		for(int i = 0;i < 8;i++){
+			symplify(&value->cells[i]);
+			auto newVal = value->cells[i];
+			isOne &= newVal == ONE;
+			isZero &= newVal == ZERO;
+		}
+
+		if(isOne) {
+			delete *cell;
+			*cell = ONE;
+		}
+		else if(isZero) {
+			delete *cell;
+			*cell = ZERO;
+		}
+	}
+
+	int allocPtr = 0;
+	void uploadRec(Layer *layer, std::vector<uint32_t> &ssboData, int ptr){
+		if(isLeaf(layer)){
+			ssboData[ptr] = layer == ONE ? VOID : LEAF;
+			return;
+		}
+		int allocated = allocPtr;
+		allocPtr+=8;
+		ssboData[ptr] = BRAN | allocated;
+		for(int i = 0;i < 8;i++){
+			uploadRec(layer->cells[i], ssboData, allocated + i);
+		}
+	}
+	void upload(Layer *root, std::vector<uint32_t> &ssboData){
+		int allocated = allocPtr;
+		allocPtr+=8;
+		for(int i = 0;i < 8;i++){
+			uploadRec(root->cells[i], ssboData, allocated + i);
+		}
+	}
+
+	
+};
+
+
+
+
 struct VoxelGrid{
 	glm::ivec3 dim;
 	glm::u8 *data;
@@ -116,9 +231,9 @@ public:
 		// Models
 		//std::vector<std::string> modelFiles = { "cube.gltf", "vulkanscenelogos.gltf", "vulkanscenebackground.gltf", "vulkanscenemodels.gltf" };
 		//std::vector<VkPipeline*> modelPipelines = { &pipelines.skybox, &pipelines.logos, &pipelines.models, &pipelines.models };
-		std::vector<std::string> modelFiles = { "vulkanscenemodels.gltf" };
+		//std::vector<std::string> modelFiles = { "vulkanscenemodels.gltf" };
 		//std::vector<std::string> modelFiles = { "cube.gltf" };
-		//std::vector<std::string> modelFiles = { "cube_blender.gltf" };
+		std::vector<std::string> modelFiles = { "cube_blender.gltf" };
 
 		
 		std::vector<VkPipeline*> modelPipelines = { &pipelines.models };
@@ -189,7 +304,7 @@ public:
 		VkPipelineRasterizationStateCreateInfo rasterizationState = vks::initializers::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE,0);
 		VkPipelineColorBlendAttachmentState blendAttachmentState = vks::initializers::pipelineColorBlendAttachmentState(0xf, VK_FALSE);
 		VkPipelineColorBlendStateCreateInfo colorBlendState = vks::initializers::pipelineColorBlendStateCreateInfo(1, &blendAttachmentState);
-		VkPipelineDepthStencilStateCreateInfo depthStencilState = vks::initializers::pipelineDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
+		VkPipelineDepthStencilStateCreateInfo depthStencilState = vks::initializers::pipelineDepthStencilStateCreateInfo(VK_FALSE, VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
 		VkPipelineViewportStateCreateInfo viewportState = vks::initializers::pipelineViewportStateCreateInfo(1, 1, 0);
 		VkPipelineMultisampleStateCreateInfo multisampleState = vks::initializers::pipelineMultisampleStateCreateInfo(VK_SAMPLE_COUNT_1_BIT, 0);
 		std::vector<VkDynamicState> dynamicStateEnables = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
@@ -303,7 +418,7 @@ public:
 		// Define buffer creation info
 		VkBufferCreateInfo bufferCreateInfo = {};
 		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		#define DIM 100
+		#define DIM 512
 		bufferCreateInfo.size = DIM*DIM*DIM*4;  // Size of the buffer in bytes
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; // Usage as a storage buffer
 		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // No sharing between queues
@@ -338,9 +453,7 @@ public:
 			}
 		}
 
-		#define VOID 0x00000000
-		#define LEAF 0xC0000000
-		#define BRAN 0x80000000
+
 		int n = 0;
 		for(int i = 0;i < 8;i++) ssboData[n+i] = VOID + n;
 		ssboData[n+0] = BRAN + n + 8;
@@ -453,6 +566,37 @@ public:
 		n+=8;
 
 
+
+		Octree::Layer *root = (Octree::Layer*)Octree::ZERO;
+		/*for(int i = 0;i < 10000;i++){
+			Octree::set(&root, rand()%3+5, glm::ivec3(rand(),rand(),rand()));
+		}*/
+	/*	Octree::set(&root, 0, glm::ivec3(0,0,0));
+		Octree::set(&root, 0, glm::ivec3(1,1,1));
+		Octree::set(&root, 2, glm::ivec3(4,2,2));*/
+		int depth = 3; //1199928/2097152
+		int center = (2 << depth)/2;
+		for(int z = 0;z < 2 << depth;z++){
+			for(int y = 0;y < 2 << depth;y++){
+				for(int x = 0;x < 2 << depth;x++){
+					//if(x+y+z > 1 << depth){
+					if((x-center)*(x-center)+(y-center)*(y-center)+(z-center)*(z-center) > center*center){
+						Octree::set(&root, depth, glm::ivec3(x,y,z));
+					}
+				}		
+			}	
+		}
+
+		/*for(int z = 0;z < 2;z++){
+			for(int y = 0;y < 2;y++){
+				for(int x = 0;x < 2;x++){
+					Octree::set(&root, 1, glm::ivec3(x,y,z));
+				}		
+			}	
+		}*/
+		Octree::symplify(&root);
+		Octree::upload(root, ssboData);
+		std::cout << Octree::allocPtr << " / " << center*center*center*8/Octree::allocPtr << std::endl;
 
 
 

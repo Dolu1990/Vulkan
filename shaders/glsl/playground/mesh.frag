@@ -336,7 +336,7 @@ void main()
     //}
 
     // Write to depth buffer
-    gl_FragDepth = clipPos.z;
+    //gl_FragDepth = clipPos.z;
 
 	int x = 0;
 	//gl_FragDepth = 0.5;

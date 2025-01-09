@@ -231,9 +231,9 @@ public:
 		// Models
 		//std::vector<std::string> modelFiles = { "cube.gltf", "vulkanscenelogos.gltf", "vulkanscenebackground.gltf", "vulkanscenemodels.gltf" };
 		//std::vector<VkPipeline*> modelPipelines = { &pipelines.skybox, &pipelines.logos, &pipelines.models, &pipelines.models };
-		//std::vector<std::string> modelFiles = { "vulkanscenemodels.gltf" };
+		std::vector<std::string> modelFiles = { "vulkanscenemodels.gltf" };
 		//std::vector<std::string> modelFiles = { "cube.gltf" };
-		std::vector<std::string> modelFiles = { "cube_blender.gltf" };
+		//std::vector<std::string> modelFiles = { "cube_blender.gltf" };
 
 		
 		std::vector<VkPipeline*> modelPipelines = { &pipelines.models };
@@ -304,7 +304,7 @@ public:
 		VkPipelineRasterizationStateCreateInfo rasterizationState = vks::initializers::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE,0);
 		VkPipelineColorBlendAttachmentState blendAttachmentState = vks::initializers::pipelineColorBlendAttachmentState(0xf, VK_FALSE);
 		VkPipelineColorBlendStateCreateInfo colorBlendState = vks::initializers::pipelineColorBlendStateCreateInfo(1, &blendAttachmentState);
-		VkPipelineDepthStencilStateCreateInfo depthStencilState = vks::initializers::pipelineDepthStencilStateCreateInfo(VK_FALSE, VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
+		VkPipelineDepthStencilStateCreateInfo depthStencilState = vks::initializers::pipelineDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
 		VkPipelineViewportStateCreateInfo viewportState = vks::initializers::pipelineViewportStateCreateInfo(1, 1, 0);
 		VkPipelineMultisampleStateCreateInfo multisampleState = vks::initializers::pipelineMultisampleStateCreateInfo(VK_SAMPLE_COUNT_1_BIT, 0);
 		std::vector<VkDynamicState> dynamicStateEnables = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
@@ -574,7 +574,7 @@ public:
 	/*	Octree::set(&root, 0, glm::ivec3(0,0,0));
 		Octree::set(&root, 0, glm::ivec3(1,1,1));
 		Octree::set(&root, 2, glm::ivec3(4,2,2));*/
-		int depth = 3; //1199928/2097152
+		int depth = 5; //1199928/2097152
 		int center = (2 << depth)/2;
 		for(int z = 0;z < 2 << depth;z++){
 			for(int y = 0;y < 2 << depth;y++){

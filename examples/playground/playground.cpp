@@ -574,7 +574,7 @@ public:
 	/*	Octree::set(&root, 0, glm::ivec3(0,0,0));
 		Octree::set(&root, 0, glm::ivec3(1,1,1));
 		Octree::set(&root, 2, glm::ivec3(4,2,2));*/
-		int depth = 5; //1199928/2097152
+		int depth = 7; //1199928/2097152
 		int center = (2 << depth)/2;
 		for(int z = 0;z < 2 << depth;z++){
 			for(int y = 0;y < 2 << depth;y++){

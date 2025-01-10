@@ -305,7 +305,7 @@ void main()
 	//if(hit) outFragColor.x += 0.5;
 	
 	if(!hit) discard;
-	if(hit && !direct)  outFragColor.xyz = normal + 0.3;
+	if(!direct)  outFragColor.xyz = normal + 0.3;
 
 	vec4 hitPos = ubo.view * ubo.model * vec4(pos, 1.0);
 	vec4 miaou = gl_FragCoord;
@@ -322,13 +322,17 @@ void main()
     float zDepth = 0.5 * zNDC + 0.5;
 
 
-    vec4 clipPos = ubo.projection * hitPos;
-
+    vec4 clipPosRef = ubo.projection * vec4(inEyePos, 1.0);
     // Perspective divide to get NDC
-    //float ndcDepth = clipPos.z / clipPos.w;
-
+    float ndcDepthRef = clipPosRef.z / clipPosRef.w;
     // Normalize to [0, 1]
-    //float normalizedDepth = 0.5 * ndcDepth + 0.5;
+    float normalizedDepthRef = 0.5 * ndcDepthRef + 0.5;
+
+    vec4 clipPos = ubo.projection * hitPos;
+    // Perspective divide to get NDC
+    float ndcDepth = clipPos.z / clipPos.w;
+    // Normalize to [0, 1]
+    float normalizedDepth = 0.5 * ndcDepth + 0.5;
 
 	vec4 fragCoord = gl_FragCoord;
    // if (gl_FragCoord.z > clipPos.z) {
@@ -336,7 +340,7 @@ void main()
     //}
 
     // Write to depth buffer
-    //gl_FragDepth = clipPos.z;
+    gl_FragDepth = direct ? fragCoord.z : ndcDepth;
 
 	int x = 0;
 	//gl_FragDepth = 0.5;

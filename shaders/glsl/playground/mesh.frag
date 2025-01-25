@@ -1,7 +1,7 @@
 #version 450
 
 layout (binding = 1) uniform sampler2D tex;
-layout (binding = 2) buffer  Voxels {
+layout (binding = 2) readonly buffer Voxels {
     uint voxels[];
 };
 
@@ -328,6 +328,7 @@ void main()
     // Normalize to [0, 1]
     float normalizedDepthRef = 0.5 * ndcDepthRef + 0.5;
 
+	//hitPos.z *=20;
     vec4 clipPos = ubo.projection * hitPos;
     // Perspective divide to get NDC
     float ndcDepth = clipPos.z / clipPos.w;

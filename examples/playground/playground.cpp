@@ -120,7 +120,7 @@ namespace Octree{
 	int allocPtr = 0;
 	void uploadRec(Layer *layer, std::vector<uint32_t> &ssboData, int ptr){
 		if(isLeaf(layer)){
-			ssboData[ptr] = layer == ONE ? VOID : LEAF;
+			ssboData[ptr] = layer == ZERO ? VOID : LEAF;
 			return;
 		}
 		int allocated = allocPtr;
@@ -257,11 +257,11 @@ public:
 	{
 		// Pool
 		std::vector<VkDescriptorPoolSize> poolSizes = {
-			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2),
+			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1),
 			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1),
 			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1)
 		};
-		VkDescriptorPoolCreateInfo descriptorPoolInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 2);
+		VkDescriptorPoolCreateInfo descriptorPoolInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 1);
 		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
 
 		// Layout
@@ -353,6 +353,8 @@ public:
 		uniformData.view = camera.matrices.view;
 		uniformData.model = glm::mat4(1.0f);
 		//uniformData.model = glm::scale(uniformData.model, glm::vec3(0.25f, 0.25f, 0.25f));
+		uniformData.model = glm::translate(uniformData.model, glm::vec3(timer, 0, 0));
+		uniformData.model = glm::rotate(uniformData.model , timer*3.14f*2, glm::vec3(0.0f, 1.0f, 0.0f));  // Yaw
 		uniformData.normal = glm::inverseTranspose(uniformData.view * uniformData.model);
 		uniformData.lightPos = lightPos;
 		uniformData.modelInv = inverse(uniformData.model) * inverse(uniformData.view);
